@@ -8,6 +8,7 @@
     "@typescript-eslint/eslint-plugin": "^4.22.1",
     "@typescript-eslint/parser": "^4.22.1",
     "cross-env": "^7.0.3",
+    "dotenv": "^8.6.0",
     "eslint": "^7.26.0",
     "eslint-config-airbnb-base": "^14.2.1",
     "eslint-config-prettier": "^8.3.0",
@@ -19,14 +20,16 @@
   },
   "dependencies": {
     "apollo-server": "^2.24.0",
+    "class-validator": "^0.13.1",
     "graphql": "^15.5.0",
     "pg": "^8.4.0",
     "reflect-metadata": "^0.1.10",
+    "type-graphql": "^1.1.1",
     "typeorm": "0.2.32"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development ts-node-dev --respawn ./src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "cross-env NODE_ENV=production node ./build/index.js"
+    "typeorm": "./node_modules/.bin/ts-node ./node_modules/.bin/typeorm",
+    "start": "cross-env NODE_ENV=production ts-node-transpile-only ./src/index.ts"
   }
 }

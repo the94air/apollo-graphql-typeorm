@@ -1,32 +1,25 @@
 import 'reflect-metadata';
 import { createConnection } from 'typeorm';
-import author from './endpoint/Author';
-import post from './endpoint/Post';
+import * as dotenv from 'dotenv';
+import { ApolloServer } from 'apollo-server';
+import { buildSchema } from 'type-graphql';
+import { AuthorResolver } from './endpoint/AuthorResolver';
+import { PostResolver } from './endpoint/PostResolver';
 
-import { ApolloServer, gql } from 'apollo-server';
+dotenv.config();
 
-const typeDefs = gql`
-  type Query {
-    _empty: String
-  }
-  type Mutation {
-    _empty: String
-  }
-  ${author.typeDefs}
-  ${post.typeDefs}
-`;
+(async () => {
+  await createConnection()
+    .then(async () => {
+      const server = new ApolloServer({
+        schema: await buildSchema({
+          resolvers: [AuthorResolver, PostResolver],
+        }),
+      });
 
-const resolvers = [author.resolvers, post.resolvers];
-
-createConnection()
-  .then(async (connection) => {
-    const server = new ApolloServer({
-      typeDefs,
-      resolvers,
-    });
-
-    server.listen().then(({ url }) => {
-      console.log(`🚀  Server ready at ${url}`);
-    });
-  })
-  .catch((error) => console.log(error));
+      server.listen().then(({ url }) => {
+        console.log(`🚀 Server ready at ${url}`);
+      });
+    })
+    .catch((error) => console.log(error));
+})();

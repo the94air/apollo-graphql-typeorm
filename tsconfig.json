@@ -1,15 +1,16 @@
 {
   "compilerOptions": {
-    "lib": ["es6"],
-    "target": "ES2016",
-    "module": "CommonJS",
+    "strict": true,
+    "lib": ["es2020", "esnext.asynciterable"],
+    "target": "es2020",
+    "module": "commonjs",
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "outDir": "build",
     "rootDir": "src",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
     "sourceMap": true,
     "removeComments": true,
     "skipLibCheck": true

@@ -1,14 +1,39 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Field, ID, ObjectType } from 'type-graphql';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany,
+  BaseEntity,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { Post } from './Post';
 
+@ObjectType()
 @Entity()
-export class Author {
+export class Author extends BaseEntity {
+  @Field(() => ID)
   @PrimaryGeneratedColumn()
-  id: number;
+  readonly id: string;
 
+  @Field()
   @Column()
   name: string;
 
-  @OneToMany(() => Post, (post) => post.author)
-  posts: Post[];
+  @Field(() => [Post])
+  @OneToMany(() => Post, (post) => post.author, {
+    nullable: true,
+    onUpdate: 'NO ACTION',
+    onDelete: 'NO ACTION',
+  })
+  posts?: Post[];
+
+  @Field(() => Date)
+  @CreateDateColumn()
+  readonly createdAt: Date;
+
+  @Field(() => Date)
+  @UpdateDateColumn()
+  readonly updatedAt: Date;
 }
