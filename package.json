@@ -1,7 +1,7 @@
 {
-  "name": "apollo-test",
+  "name": "apollo-graphql-typeorm",
   "version": "0.0.1",
-  "description": "a blog with apollo.",
+  "description": "a starter boilerplate with apollo GraphQL, TypeGraphQL, and TypeORM.",
   "devDependencies": {
     "@types/graphql": "^14.5.0",
     "@types/node": "^8.0.29",
