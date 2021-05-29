@@ -1,25 +1,14 @@
 import 'reflect-metadata';
-import { createConnection } from 'typeorm';
 import * as dotenv from 'dotenv';
-import { ApolloServer } from 'apollo-server';
-import { buildSchema } from 'type-graphql';
-import { AuthorResolver } from './endpoint/AuthorResolver';
-import { PostResolver } from './endpoint/PostResolver';
+import { createConnection } from 'typeorm';
+import { development, production } from './bootstrap';
 
 dotenv.config();
 
+const init = process.env.NODE_ENV === 'production' ? production : development;
+
 (async () => {
   await createConnection()
-    .then(async () => {
-      const server = new ApolloServer({
-        schema: await buildSchema({
-          resolvers: [AuthorResolver, PostResolver],
-        }),
-      });
-
-      server.listen().then(({ url }) => {
-        console.log(`🚀 Server ready at ${url}`);
-      });
-    })
+    .then(init)
     .catch((error) => console.log(error));
 })();
