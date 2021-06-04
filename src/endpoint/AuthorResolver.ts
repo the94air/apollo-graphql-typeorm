@@ -31,7 +31,7 @@ class AuthorPostsInput {
 }
 
 @Resolver(() => Author)
-export class AuthorResolver {
+export default class AuthorResolver {
   @Query(() => [Author])
   async authors() {
     return await Author.find();

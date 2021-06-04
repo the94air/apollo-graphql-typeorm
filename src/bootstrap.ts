@@ -2,7 +2,7 @@ import fastify from 'fastify';
 import { buildSchema } from 'type-graphql';
 import { ApolloServer as ApolloServerDevelopment } from 'apollo-server';
 import { ApolloServer as ApolloServerProduction } from 'apollo-server-fastify';
-import { resolvers } from './endpoint/Index';
+import { resolvers } from './endpoint';
 
 async function development() {
   const server = new ApolloServerDevelopment({

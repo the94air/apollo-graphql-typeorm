@@ -43,7 +43,7 @@ class PostAuthorInput {
 }
 
 @Resolver(() => Post)
-export class PostResolver {
+export default class PostResolver {
   @Query(() => [Post])
   async posts() {
     return await Post.find();
