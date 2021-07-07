@@ -1,13 +1,61 @@
+import glob from 'glob';
 import fastify from 'fastify';
 import { buildSchema } from 'type-graphql';
 import { ApolloServer as ApolloServerDevelopment } from 'apollo-server';
 import { ApolloServer as ApolloServerProduction } from 'apollo-server-fastify';
-import { resolvers } from './endpoint';
+import nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
+// import { EmailDetails } from './context';
+
+function getMailer() {
+  let mailer = nodemailer.createTransport({
+    host: process.env.MAIL_HOST,
+    port: Number(process.env.MAIL_PORT),
+    secure: process.env.MAIL_ENCRYPTION === 'true' ? true : false,
+    auth: {
+      user: process.env.MAIL_USERNAME,
+      pass: process.env.MAIL_PASSWORD,
+    },
+    logger: false,
+  } as SMTPTransport.Options);
+
+  return mailer;
+}
+
+// async function sendMail(mailer: Transporter, details: EmailDetails) {
+//   await mailer.sendMail({
+//     from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
+//     to: details.to,
+//     subject: `${details.subject} | ${process.env.APP_NAME}`,
+//     text: details.text,
+//     html: details.html,
+//   });
+// }
+
+async function getResolvers() {
+  let resolverModules: Function[] = [];
+
+  await Promise.all(
+    glob.sync(__dirname + '/endpoint/*.ts').map(async (file) => {
+      const { default: resolver } = await import(file);
+      resolverModules.push(resolver);
+    })
+  );
+
+  return resolverModules as [Function];
+}
 
 async function development() {
+  const resolvers: [Function] = await getResolvers();
+
   const server = new ApolloServerDevelopment({
     schema: await buildSchema({
       resolvers,
+    }),
+    context: (ctx) => ({
+      headers: ctx.req.headers,
+      mailer: getMailer(),
+      // sendMail: sendMail(),
     }),
   });
 
@@ -17,9 +65,15 @@ async function development() {
 }
 
 async function production() {
+  const resolvers: [Function] = await getResolvers();
+
   const server = new ApolloServerProduction({
     schema: await buildSchema({
       resolvers,
+    }),
+    context: (ctx) => ({
+      headers: ctx.req.headers,
+      mailer: getMailer(),
     }),
   });
 
