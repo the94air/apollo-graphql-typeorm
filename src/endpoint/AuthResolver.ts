@@ -20,15 +20,6 @@ import { Auth, Verified } from '../middleware/Auth';
 import { UserVerifyToken } from '../entity/UserVerifyToken';
 import { UserForgotPasswordToken } from '../entity/UserForgotPasswordToken';
 
-@ObjectType()
-export class ResponseMessage {
-  @Field()
-  message?: string;
-
-  @Field()
-  accessToken?: string;
-}
-
 @InputType()
 class UserSignUpInput {
   @Field()
@@ -71,6 +62,15 @@ class UserPasswordResetInput {
   password: string;
 }
 
+@ObjectType()
+export class ResponseMessage {
+  @Field()
+  message?: string;
+
+  @Field()
+  accessToken?: string;
+}
+
 function accessTokenFactory(user: User) {
   const data: userData = {
     userId: user.id,
@@ -87,14 +87,14 @@ function urlTokenFactory() {
 }
 
 async function passwordHashFactory(plainPassword: string) {
-  return await argon2.hash(plainPassword);
+  return argon2.hash(plainPassword);
 }
 
-async function passwordCompareFactory(
+async function passwordCompareGuard(
   passwordHash: string,
   plainPassword: string
 ) {
-  return await argon2.verify(passwordHash, plainPassword);
+  return argon2.verify(passwordHash, plainPassword);
 }
 
 @Resolver(() => ResponseMessage)
@@ -102,53 +102,52 @@ export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   async signUp(
     @Arg('input', () => UserSignUpInput) input: UserSignUpInput,
-    @Ctx() { mailer }: Context
+    @Ctx() { sendMail }: Context
   ) {
     let user = await User.findOne({
       where: { email: input.email },
-      relations: ['author'],
     });
+
     if (!user) {
       const author = await Author.create({
         name: input.name,
       }).save();
 
       const hashedPassword = await passwordHashFactory(input.password);
-      const user = await User.create({
+      const newUser = await User.create({
         email: input.email,
         password: hashedPassword,
         author: author,
       }).save();
 
       const verifyToken = urlTokenFactory();
-
       await UserVerifyToken.create({
         email: input.email,
         token: verifyToken,
       }).save();
 
-      await mailer.sendMail({
-        from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
-        to: user.email,
-        subject: 'Verify email | ${process.env.APP_NAME}',
+      await sendMail({
+        to: newUser.email,
+        subject: 'Verify email',
         html: `
-          <p>Hi, ${user.author.name}</p>
+          <p>Hi, ${newUser.author.name}</p>
           <p>Click the email below to verify your email</p>
-          <p><a href="http://localhost:3000/">Verify email</a></p>
+          <p><a href="http://localhost:8080/auth/verify/${verifyToken}">Verify email</a></p>
           <p>Thank you</p>
         `,
       });
 
       return {
-        accessToken: accessTokenFactory(user),
+        accessToken: accessTokenFactory(newUser),
       };
     }
+
     return new Error('Email is taken');
   }
 
   @Mutation(() => ResponseMessage)
   @UseMiddleware(Auth)
-  async resendVerifyEmail(@Ctx() { payload, mailer }: Context) {
+  async resendVerifyEmail(@Ctx() { payload, sendMail }: Context) {
     const user = payload?.user;
 
     const verifyToken = urlTokenFactory();
@@ -158,14 +157,13 @@ export default class AuthResolver {
       token: verifyToken,
     }).save();
 
-    await mailer.sendMail({
-      from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
-      to: user?.email,
-      subject: 'Resent verify email | ${process.env.APP_NAME}',
+    await sendMail({
+      to: user?.email as string,
+      subject: 'Resent verify email',
       html: `
         <p>Hi, ${user?.author.name}</p>
         <p>Click the email below to verify your email</p>
-        <p><a href="http://localhost:3000/">Verify email</a></p>
+        <p><a href="http://localhost:8080/auth/verify/${verifyToken}">Verify email</a></p>
         <p>Thank you</p>
       `,
     });
@@ -188,25 +186,28 @@ export default class AuthResolver {
 
     if (user && verifyToken) {
       if (
-        dayjs(verifyToken.createdAt) >= dayjs() &&
-        dayjs(verifyToken.createdAt) <= dayjs().add(60, 'minutes')
+        dayjs().isBetween(
+          dayjs(verifyToken.createdAt),
+          dayjs(verifyToken.createdAt).add(60, 'minutes')
+        )
       ) {
         const tokens = await UserVerifyToken.find({
           where: { email: user.email },
         });
 
-        return await Promise.all(
+        await Promise.all(
           tokens.map(async (token: { remove: () => any }) => {
             await token.remove();
           })
-        ).then(async () => {
-          await User.update(user.id, {
-            isVerified: true,
-          });
-          return {
-            message: 'Account is verified',
-          };
+        );
+
+        await User.update(user.id, {
+          isVerified: true,
         });
+
+        return {
+          message: 'Account is verified',
+        };
       }
       return new Error('Token has expired');
     }
@@ -216,23 +217,30 @@ export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   async signIn(@Arg('input', () => UserSignInInput) input: UserSignInInput) {
     const user = await User.findOne({ where: { email: input.email } });
+
     if (user) {
-      const match = await passwordCompareFactory(user.password, input.password);
+      const match = await passwordCompareGuard(user.password, input.password);
+
       if (match) {
         return {
           accessToken: accessTokenFactory(user),
         };
       }
     }
+
     return new Error('Incorrect credencials');
   }
 
   @Mutation(() => ResponseMessage)
   async forgotPassword(
     @Arg('input', () => UserForgotPasswordInput) input: UserForgotPasswordInput,
-    @Ctx() { mailer }: Context
+    @Ctx() { sendMail }: Context
   ) {
-    const user = await User.findOne({ where: { email: input.email } });
+    const user = await User.findOne({
+      where: { email: input.email },
+      relations: ['author'],
+    });
+
     if (user) {
       const forgotPasswordToken = urlTokenFactory();
 
@@ -241,14 +249,13 @@ export default class AuthResolver {
         token: forgotPasswordToken,
       }).save();
 
-      await mailer.sendMail({
-        from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
+      await sendMail({
         to: user?.email,
-        subject: 'Forgot password | ${process.env.APP_NAME}',
+        subject: 'Forgot password',
         html: `
           <p>Hi, ${user?.author.name}</p>
           <p>Click the email below to reset your password</p>
-          <p><a href="http://localhost:3000/">Reset password</a></p>
+          <p><a href="http://localhost:8080/auth/forgot-password/${forgotPasswordToken}">Reset password</a></p>
           <p>Thank you</p>
         `,
       });
@@ -272,13 +279,19 @@ export default class AuthResolver {
 
     if (forgotPasswordToken && user) {
       if (
-        dayjs(forgotPasswordToken.createdAt) >= dayjs() &&
-        dayjs(forgotPasswordToken.createdAt) <= dayjs().add(60, 'minutes')
+        dayjs().isBetween(
+          dayjs(forgotPasswordToken.createdAt),
+          dayjs(forgotPasswordToken.createdAt).add(60, 'minutes')
+        )
       ) {
         const passwordHash = await passwordHashFactory(input.password);
+
         await User.update(user.id, {
           password: passwordHash,
         });
+
+        forgotPasswordToken.remove();
+
         return {
           message: 'Password has been reset',
         };

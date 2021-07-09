@@ -26,10 +26,10 @@ export class UserForgotPasswordToken extends BaseEntity {
   token: string;
 
   @Field(() => Date)
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp with time zone' })
   readonly createdAt: Date;
 
   @Field(() => Date)
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamp with time zone' })
   readonly updatedAt: Date;
 }

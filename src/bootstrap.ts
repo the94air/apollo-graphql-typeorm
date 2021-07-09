@@ -3,9 +3,9 @@ import fastify from 'fastify';
 import { buildSchema } from 'type-graphql';
 import { ApolloServer as ApolloServerDevelopment } from 'apollo-server';
 import { ApolloServer as ApolloServerProduction } from 'apollo-server-fastify';
-import nodemailer from 'nodemailer';
+import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
-// import { EmailDetails } from './context';
+import { EmailDetails } from './context';
 
 function getMailer() {
   let mailer = nodemailer.createTransport({
@@ -22,15 +22,15 @@ function getMailer() {
   return mailer;
 }
 
-// async function sendMail(mailer: Transporter, details: EmailDetails) {
-//   await mailer.sendMail({
-//     from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
-//     to: details.to,
-//     subject: `${details.subject} | ${process.env.APP_NAME}`,
-//     text: details.text,
-//     html: details.html,
-//   });
-// }
+async function sendMail(mailer: Transporter, details: EmailDetails) {
+  await mailer.sendMail({
+    from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
+    to: details.to,
+    subject: `${details.subject} - ${process.env.APP_NAME}`,
+    text: details.text,
+    html: details.html,
+  });
+}
 
 async function getResolvers() {
   let resolverModules: Function[] = [];
@@ -52,11 +52,16 @@ async function development() {
     schema: await buildSchema({
       resolvers,
     }),
-    context: (ctx) => ({
-      headers: ctx.req.headers,
-      mailer: getMailer(),
-      // sendMail: sendMail(),
-    }),
+    context: (ctx) => {
+      const mailer = getMailer();
+
+      return {
+        headers: ctx.req.headers,
+        sendMail: async (details: EmailDetails) => {
+          return sendMail(mailer, details);
+        },
+      };
+    },
   });
 
   server.listen(3000).then(({ url }) => {
@@ -71,10 +76,16 @@ async function production() {
     schema: await buildSchema({
       resolvers,
     }),
-    context: (ctx) => ({
-      headers: ctx.req.headers,
-      mailer: getMailer(),
-    }),
+    context: (ctx) => {
+      const mailer = getMailer();
+
+      return {
+        headers: ctx.req.headers,
+        sendMail: async (details: EmailDetails) => {
+          return sendMail(mailer, details);
+        },
+      };
+    },
   });
 
   const app = fastify();
