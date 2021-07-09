@@ -1,7 +1,7 @@
 {
-  "name": "apollo-graphql-typeorm",
+  "name": "mercurius-graphql-typeorm",
   "version": "0.0.1",
-  "description": "a starter boilerplate with apollo GraphQL, TypeGraphQL, and TypeORM.",
+  "description": "A starter boilerplate with Mercurius GraphQL, apollo GraphQL, TypeGraphQL, and TypeORM.",
   "devDependencies": {
     "@types/graphql": "^14.5.0",
     "@types/jsonwebtoken": "^8.5.1",
@@ -22,13 +22,14 @@
   },
   "dependencies": {
     "apollo-server": "^2.24.0",
-    "apollo-server-fastify": "^2.25.0",
     "argon2": "^0.28.2",
     "class-validator": "^0.13.1",
     "dayjs": "^1.10.5",
-    "fastify": "^3.16.2",
+    "fastify": "^3.19.0",
+    "fastify-rate-limit": "^5.5.0",
     "graphql": "^15.5.0",
     "jsonwebtoken": "^8.5.1",
+    "mercurius": "^8.0.0",
     "nodemailer": "^6.6.2",
     "pg": "^8.4.0",
     "reflect-metadata": "^0.1.10",

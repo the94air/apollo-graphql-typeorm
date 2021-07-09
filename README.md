@@ -1,4 +1,4 @@
-# Apollo GraphQL and TypeORM
+# Mercurius GraphQL and TypeORM
 
 Steps to run this project:
 

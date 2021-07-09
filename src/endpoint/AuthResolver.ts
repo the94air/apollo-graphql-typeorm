@@ -10,6 +10,7 @@ import {
   ObjectType,
 } from 'type-graphql';
 import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';
 import argon2 from 'argon2';
 import { sign } from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -97,7 +98,7 @@ async function passwordCompareGuard(
   return argon2.verify(passwordHash, plainPassword);
 }
 
-@Resolver(() => ResponseMessage)
+@Resolver()
 export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   async signUp(
@@ -185,6 +186,8 @@ export default class AuthResolver {
     });
 
     if (user && verifyToken) {
+      dayjs.extend(isBetween);
+
       if (
         dayjs().isBetween(
           dayjs(verifyToken.createdAt),
@@ -278,6 +281,8 @@ export default class AuthResolver {
     });
 
     if (forgotPasswordToken && user) {
+      dayjs.extend(isBetween);
+
       if (
         dayjs().isBetween(
           dayjs(forgotPasswordToken.createdAt),

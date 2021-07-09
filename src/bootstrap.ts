@@ -1,8 +1,9 @@
 import glob from 'glob';
 import fastify from 'fastify';
+import rateLimit from 'fastify-rate-limit';
 import { buildSchema } from 'type-graphql';
-import { ApolloServer as ApolloServerDevelopment } from 'apollo-server';
-import { ApolloServer as ApolloServerProduction } from 'apollo-server-fastify';
+import { ApolloServer } from 'apollo-server';
+import mercurius from 'mercurius';
 import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { EmailDetails } from './context';
@@ -48,7 +49,7 @@ async function getResolvers() {
 async function development() {
   const resolvers: [Function] = await getResolvers();
 
-  const server = new ApolloServerDevelopment({
+  const server = new ApolloServer({
     schema: await buildSchema({
       resolvers,
     }),
@@ -72,15 +73,18 @@ async function development() {
 async function production() {
   const resolvers: [Function] = await getResolvers();
 
-  const server = new ApolloServerProduction({
+  const app = fastify();
+
+  app.register(mercurius, {
     schema: await buildSchema({
       resolvers,
     }),
+    graphiql: true,
     context: (ctx) => {
       const mailer = getMailer();
 
       return {
-        headers: ctx.req.headers,
+        headers: ctx.headers,
         sendMail: async (details: EmailDetails) => {
           return sendMail(mailer, details);
         },
@@ -88,12 +92,22 @@ async function production() {
     },
   });
 
-  const app = fastify();
+  await app.register(rateLimit, {
+    global: true,
+    max: 120,
+    timeWindow: '10 minute',
+  });
 
-  await server.start();
-  app.register(server.createHandler());
-  await app.listen(3000).then(() => {
-    console.log(`🚀 Server ready at http://localhost:3000`);
+  app.setNotFoundHandler({ preHandler: app.rateLimit() }, (_request, reply) => {
+    reply.code(404).send({
+      message: 'Route not found',
+      error: 'Not Found',
+      statusCode: 404,
+    });
+  });
+
+  await app.listen(3300).then(() => {
+    console.log(`🚀 Server ready at http://localhost:3300`);
   });
 }
 
