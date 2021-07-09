@@ -72,7 +72,7 @@ export class ResponseMessage {
   accessToken?: string;
 }
 
-function accessTokenFactory(user: User) {
+const accessTokenFactory = (user: User) => {
   const data: userData = {
     userId: user.id,
   };
@@ -81,22 +81,22 @@ function accessTokenFactory(user: User) {
     expiresIn: '60 days',
   });
   return token;
-}
+};
 
-function urlTokenFactory() {
+const urlTokenFactory = () => {
   return crypto.randomBytes(64).toString('hex');
-}
+};
 
-async function passwordHashFactory(plainPassword: string) {
+const passwordHashFactory = async (plainPassword: string) => {
   return argon2.hash(plainPassword);
-}
+};
 
-async function passwordCompareGuard(
+const passwordCompareGuard = async (
   passwordHash: string,
   plainPassword: string
-) {
+) => {
   return argon2.verify(passwordHash, plainPassword);
-}
+};
 
 @Resolver()
 export default class AuthResolver {

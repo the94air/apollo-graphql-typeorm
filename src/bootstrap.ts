@@ -8,7 +8,7 @@ import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { EmailDetails } from './context';
 
-function getMailer() {
+const getMailer = () => {
   let mailer = nodemailer.createTransport({
     host: process.env.MAIL_HOST,
     port: Number(process.env.MAIL_PORT),
@@ -21,9 +21,9 @@ function getMailer() {
   } as SMTPTransport.Options);
 
   return mailer;
-}
+};
 
-async function sendMail(mailer: Transporter, details: EmailDetails) {
+const sendMail = async (mailer: Transporter, details: EmailDetails) => {
   await mailer.sendMail({
     from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
     to: details.to,
@@ -31,9 +31,9 @@ async function sendMail(mailer: Transporter, details: EmailDetails) {
     text: details.text,
     html: details.html,
   });
-}
+};
 
-async function getResolvers() {
+const getResolvers = async () => {
   let resolverModules: Function[] = [];
 
   await Promise.all(
@@ -44,9 +44,9 @@ async function getResolvers() {
   );
 
   return resolverModules as [Function];
-}
+};
 
-async function development() {
+const development = async () => {
   const resolvers: [Function] = await getResolvers();
 
   const server = new ApolloServer({
@@ -68,9 +68,9 @@ async function development() {
   server.listen(3000).then(({ url }) => {
     console.log(`🚀 Server ready at ${url}`);
   });
-}
+};
 
-async function production() {
+const production = async () => {
   const resolvers: [Function] = await getResolvers();
 
   const app = fastify();
@@ -109,6 +109,6 @@ async function production() {
   await app.listen(3300).then(() => {
     console.log(`🚀 Server ready at http://localhost:3300`);
   });
-}
+};
 
 export { development, production };
