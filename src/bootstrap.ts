@@ -6,7 +6,7 @@ import { ApolloServer } from 'apollo-server';
 import mercurius from 'mercurius';
 import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { EmailDetails } from './context';
+import { EmailDetails } from './types';
 
 const getMailer = () => {
   let mailer = nodemailer.createTransport({

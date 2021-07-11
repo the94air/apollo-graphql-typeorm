@@ -1,5 +1,3 @@
-import { User } from './entity/User';
-
 export interface EmailDetails {
   to: string;
   subject: string;
@@ -7,14 +5,15 @@ export interface EmailDetails {
   html?: string;
 }
 
+export interface userData {
+  userId: string;
+  isVerified: boolean;
+}
+
 export interface Context {
   headers: {
     authorization: string;
   };
-  payload?: { user: User };
+  payload?: { user: userData };
   sendMail(details: EmailDetails): Promise<void>;
-}
-
-export interface userData {
-  userId: string;
 }

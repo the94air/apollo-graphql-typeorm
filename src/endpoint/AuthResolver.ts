@@ -14,12 +14,12 @@ import isBetween from 'dayjs/plugin/isBetween';
 import argon2 from 'argon2';
 import { sign } from 'jsonwebtoken';
 import crypto from 'crypto';
-import { Context, userData } from '../context';
+import { Context, userData } from '../types';
 import { User } from '../entity/User';
 import { Author } from '../entity/Author';
 import { Auth, Verified } from '../middleware/Auth';
-import { UserVerifyToken } from '../entity/UserVerifyToken';
-import { UserForgotPasswordToken } from '../entity/UserForgotPasswordToken';
+import { UserVerifyToken } from '../entity/UserVerify';
+import { UserForgotPasswordToken } from '../entity/UserForgotPassword';
 
 @InputType()
 class UserSignUpInput {
@@ -75,6 +75,7 @@ export class ResponseMessage {
 const accessTokenFactory = (user: User) => {
   const data: userData = {
     userId: user.id,
+    isVerified: user.isVerified,
   };
 
   const token = sign(data, process.env.JWT_SECRET as string, {
@@ -149,7 +150,9 @@ export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   @UseMiddleware(Auth)
   async resendVerifyEmail(@Ctx() { payload, sendMail }: Context) {
-    const user = payload?.user;
+    const user = await User.findOne(payload?.user.userId, {
+      relations: ['author'],
+    });
 
     const verifyToken = urlTokenFactory();
 
@@ -180,7 +183,8 @@ export default class AuthResolver {
     @Arg('input', () => UserVerifyInput) input: UserVerifyInput,
     @Ctx() { payload }: Context
   ) {
-    const user = payload?.user;
+    const user = await User.findOne(payload?.user.userId);
+
     const verifyToken = await UserVerifyToken.findOne({
       where: { token: input.token, email: user?.email },
     });
@@ -310,6 +314,6 @@ export default class AuthResolver {
   @UseMiddleware(Auth)
   @UseMiddleware(Verified)
   async user(@Ctx() { payload }: Context) {
-    return payload?.user;
+    return await User.findOne(payload?.user.userId, { relations: ['author'] });
   }
 }

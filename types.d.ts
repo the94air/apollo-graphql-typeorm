@@ -1,5 +1,5 @@
 import { Secret, VerifyOptions } from 'jsonwebtoken';
-import { userData } from './src/context';
+import { userData } from './src/types';
 
 declare module 'jsonwebtoken' {
   function verify(
