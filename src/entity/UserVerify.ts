@@ -11,7 +11,7 @@ import {
 
 @ObjectType()
 @Entity()
-export class UserVerifyToken extends BaseEntity {
+export class UserVerify extends BaseEntity {
   @Field(() => ID)
   @PrimaryGeneratedColumn()
   readonly id: string;

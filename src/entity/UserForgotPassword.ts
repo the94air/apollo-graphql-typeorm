@@ -11,7 +11,7 @@ import {
 
 @ObjectType()
 @Entity()
-export class UserForgotPasswordToken extends BaseEntity {
+export class UserForgotPassword extends BaseEntity {
   @Field(() => ID)
   @PrimaryGeneratedColumn()
   readonly id: string;

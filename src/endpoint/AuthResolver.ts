@@ -18,8 +18,8 @@ import { Context, userData } from '../types';
 import { User } from '../entity/User';
 import { Author } from '../entity/Author';
 import { Auth, Verified } from '../middleware/Auth';
-import { UserVerifyToken } from '../entity/UserVerify';
-import { UserForgotPasswordToken } from '../entity/UserForgotPassword';
+import { UserVerify } from '../entity/UserVerify';
+import { UserForgotPassword } from '../entity/UserForgotPassword';
 
 @InputType()
 class UserSignUpInput {
@@ -123,7 +123,7 @@ export default class AuthResolver {
       }).save();
 
       const verifyToken = urlTokenFactory();
-      await UserVerifyToken.create({
+      await UserVerify.create({
         email: input.email,
         token: verifyToken,
       }).save();
@@ -156,7 +156,7 @@ export default class AuthResolver {
 
     const verifyToken = urlTokenFactory();
 
-    await UserVerifyToken.create({
+    await UserVerify.create({
       email: user?.email,
       token: verifyToken,
     }).save();
@@ -185,7 +185,7 @@ export default class AuthResolver {
   ) {
     const user = await User.findOne(payload?.user.userId);
 
-    const verifyToken = await UserVerifyToken.findOne({
+    const verifyToken = await UserVerify.findOne({
       where: { token: input.token, email: user?.email },
     });
 
@@ -198,7 +198,7 @@ export default class AuthResolver {
           dayjs(verifyToken.createdAt).add(60, 'minutes')
         )
       ) {
-        const tokens = await UserVerifyToken.find({
+        const tokens = await UserVerify.find({
           where: { email: user.email },
         });
 
@@ -251,7 +251,7 @@ export default class AuthResolver {
     if (user) {
       const forgotPasswordToken = urlTokenFactory();
 
-      await UserForgotPasswordToken.create({
+      await UserForgotPassword.create({
         email: user.email,
         token: forgotPasswordToken,
       }).save();
@@ -276,7 +276,7 @@ export default class AuthResolver {
   async resetPassword(
     @Arg('input', () => UserPasswordResetInput) input: UserPasswordResetInput
   ) {
-    const forgotPasswordToken = await UserForgotPasswordToken.findOne({
+    const forgotPasswordToken = await UserForgotPassword.findOne({
       where: { token: input.token },
     });
 
