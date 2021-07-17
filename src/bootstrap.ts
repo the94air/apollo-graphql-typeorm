@@ -1,12 +1,41 @@
 import glob from 'glob';
-import fastify from 'fastify';
+import slugify from 'slugify';
+import Redis, { RedisOptions } from 'ioredis';
+import * as dotenv from 'dotenv';
+import mercurius from 'mercurius';
+import { EmailDetails } from './types';
 import rateLimit from 'fastify-rate-limit';
 import { buildSchema } from 'type-graphql';
 import { ApolloServer } from 'apollo-server';
-import mercurius from 'mercurius';
 import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { EmailDetails } from './types';
+import fastify, { FastifyRequest, FastifyReply } from 'fastify';
+import fastifyCookie, {
+  CookieSerializeOptions,
+  FastifyCookieOptions,
+} from 'fastify-cookie';
+
+dotenv.config();
+
+const PREFIX = slugify(process.env.APP_NAME as string, '_') + '_';
+
+const redis = () => {
+  const client = new Redis({
+    keyPrefix: PREFIX,
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT),
+    password:
+      process.env.REDIS_PASSWORD !== 'null'
+        ? process.env.REDIS_PASSWORD
+        : undefined,
+  } as RedisOptions);
+
+  client.on('error', (err) => {
+    console.log('Error ' + err);
+  });
+
+  return client;
+};
 
 const getMailer = () => {
   let mailer = nodemailer.createTransport({
@@ -33,6 +62,23 @@ const sendMail = async (mailer: Transporter, details: EmailDetails) => {
   });
 };
 
+const setCookie = (
+  name: string,
+  value: string,
+  options: CookieSerializeOptions,
+  cookie: Function
+) => {
+  cookie(PREFIX + name, value, options);
+};
+
+const clearCookie = (
+  name: string,
+  options: CookieSerializeOptions,
+  clear: Function
+) => {
+  clear(PREFIX + name, options);
+};
+
 const getResolvers = async () => {
   let resolverModules: Function[] = [];
 
@@ -57,7 +103,19 @@ const development = async () => {
       const mailer = getMailer();
 
       return {
+        redis: redis,
         headers: ctx.req.headers,
+        cookies: ctx.req.cookies,
+        setCookie: (
+          name: string,
+          value: string,
+          options: CookieSerializeOptions
+        ) => {
+          setCookie(name, value, options, ctx.res.cookie);
+        },
+        clearCookie: (name: string, options: CookieSerializeOptions) => {
+          clearCookie(name, options, ctx.res.clearCookie);
+        },
         sendMail: async (details: EmailDetails) => {
           return sendMail(mailer, details);
         },
@@ -75,27 +133,43 @@ const production = async () => {
 
   const app = fastify();
 
-  app.register(mercurius, {
-    schema: await buildSchema({
-      resolvers,
-    }),
-    graphiql: true,
-    context: (ctx) => {
-      const mailer = getMailer();
-
-      return {
-        headers: ctx.headers,
-        sendMail: async (details: EmailDetails) => {
-          return sendMail(mailer, details);
-        },
-      };
-    },
-  });
+  app.register(fastifyCookie, {
+    secret: process.env.JWT_SECRET,
+  } as FastifyCookieOptions);
 
   await app.register(rateLimit, {
     global: true,
     max: 120,
     timeWindow: '10 minute',
+  });
+
+  app.register(mercurius, {
+    schema: await buildSchema({
+      resolvers,
+    }),
+    graphiql: true,
+    context: (request: FastifyRequest, reply: FastifyReply) => {
+      const mailer = getMailer();
+
+      return {
+        redis: redis,
+        headers: request.headers,
+        cookies: request.cookies,
+        setCookie: (
+          name: string,
+          value: string,
+          options: CookieSerializeOptions
+        ) => {
+          setCookie(name, value, options, reply.cookie);
+        },
+        clearCookie: (name: string, options: CookieSerializeOptions) => {
+          clearCookie(name, options, reply.clearCookie);
+        },
+        sendMail: async (details: EmailDetails) => {
+          return sendMail(mailer, details);
+        },
+      };
+    },
   });
 
   app.setNotFoundHandler({ preHandler: app.rateLimit() }, (_request, reply) => {

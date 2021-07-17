@@ -9,6 +9,7 @@ import {
   UseMiddleware,
   ObjectType,
 } from 'type-graphql';
+import ms from 'ms';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
 import argon2 from 'argon2';
@@ -17,9 +18,11 @@ import crypto from 'crypto';
 import { Context, userData } from '../types';
 import { User } from '../entity/User';
 import { Author } from '../entity/Author';
-import { Auth, Verified } from '../middleware/Auth';
+import { Auth } from '../middleware/Auth';
+import { Verified } from '../middleware/Verified';
 import { UserVerify } from '../entity/UserVerify';
 import { UserForgotPassword } from '../entity/UserForgotPassword';
+import { refreshTokenCheck } from '../middleware/refreshTokenCheck';
 
 @InputType()
 class UserSignUpInput {
@@ -63,6 +66,15 @@ class UserPasswordResetInput {
   password: string;
 }
 
+@InputType()
+class UserChangePasswordInput {
+  @Field()
+  oldPassword: string;
+
+  @Field()
+  newPassword: string;
+}
+
 @ObjectType()
 export class ResponseMessage {
   @Field()
@@ -72,6 +84,17 @@ export class ResponseMessage {
   accessToken?: string;
 }
 
+const refreshTokenFactory = (user: User) => {
+  const data: userData = {
+    userId: user.id,
+  };
+
+  const token = sign(data, process.env.JWT_SECRET as string, {
+    expiresIn: '1y',
+  });
+  return token;
+};
+
 const accessTokenFactory = (user: User) => {
   const data: userData = {
     userId: user.id,
@@ -79,7 +102,7 @@ const accessTokenFactory = (user: User) => {
   };
 
   const token = sign(data, process.env.JWT_SECRET as string, {
-    expiresIn: '60 days',
+    expiresIn: 100,
   });
   return token;
 };
@@ -104,9 +127,10 @@ export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   async signUp(
     @Arg('input', () => UserSignUpInput) input: UserSignUpInput,
-    @Ctx() { sendMail }: Context
+    @Ctx() { sendMail, setCookie, redis }: Context
   ) {
     let user = await User.findOne({
+      // email should be lowercase
       where: { email: input.email },
     });
 
@@ -117,6 +141,7 @@ export default class AuthResolver {
 
       const hashedPassword = await passwordHashFactory(input.password);
       const newUser = await User.create({
+        // email should be lowercase
         email: input.email,
         password: hashedPassword,
         author: author,
@@ -124,6 +149,7 @@ export default class AuthResolver {
 
       const verifyToken = urlTokenFactory();
       await UserVerify.create({
+        // email should be lowercase
         email: input.email,
         token: verifyToken,
       }).save();
@@ -138,6 +164,15 @@ export default class AuthResolver {
           <p>Thank you</p>
         `,
       });
+
+      const refreshToken = `${newUser.id}:${refreshTokenFactory(newUser)}`;
+
+      setCookie('session', refreshToken, {
+        maxAge: ms('1y') / 1000,
+        httpOnly: true,
+      });
+
+      await redis.set(refreshToken, '');
 
       return {
         accessToken: accessTokenFactory(newUser),
@@ -157,6 +192,7 @@ export default class AuthResolver {
     const verifyToken = urlTokenFactory();
 
     await UserVerify.create({
+      // email should be lowercase
       email: user?.email,
       token: verifyToken,
     }).save();
@@ -173,7 +209,7 @@ export default class AuthResolver {
     });
 
     return {
-      message: 'Verify token resent!',
+      message: 'Verify token resent',
     };
   }
 
@@ -222,13 +258,28 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
-  async signIn(@Arg('input', () => UserSignInInput) input: UserSignInInput) {
+  async signIn(
+    @Arg('input', () => UserSignInInput) input: UserSignInInput,
+    @Ctx() { setCookie, redis }: Context
+  ) {
     const user = await User.findOne({ where: { email: input.email } });
 
     if (user) {
       const match = await passwordCompareGuard(user.password, input.password);
 
       if (match) {
+        // blacklist old refreshToken
+        // cookies.session
+
+        const refreshToken = `${user.id}:${refreshTokenFactory(user)}`;
+
+        setCookie('session', refreshToken, {
+          maxAge: ms('1y') / 1000,
+          httpOnly: true,
+        });
+
+        await redis.set(refreshToken, '');
+
         return {
           accessToken: accessTokenFactory(user),
         };
@@ -236,6 +287,43 @@ export default class AuthResolver {
     }
 
     return new Error('Incorrect credencials');
+  }
+
+  @Mutation(() => ResponseMessage)
+  @UseMiddleware(refreshTokenCheck)
+  async refresh(@Ctx() { payload, setCookie, redis }: Context) {
+    const user = await User.findOne(payload?.user.userId);
+
+    // blacklist refreshToken
+
+    if (user) {
+      const refreshToken = `${user.id}:${refreshTokenFactory(user)}`;
+
+      setCookie('session', refreshToken, {
+        maxAge: ms('1y') / 1000,
+        httpOnly: true,
+      });
+
+      await redis.set(refreshToken, '');
+
+      return {
+        accessToken: accessTokenFactory(user),
+      };
+    }
+
+    return new Error('Access unauthorized');
+  }
+
+  @Mutation(() => ResponseMessage)
+  @UseMiddleware(Auth)
+  async signOut(@Ctx() { payload, clearCookie }: Context) {
+    const user = await User.findOne(payload?.user.userId);
+
+    clearCookie('session');
+
+    // blacklist refreshToken
+
+    return new Error('Account signed out');
   }
 
   @Mutation(() => ResponseMessage)
@@ -252,6 +340,7 @@ export default class AuthResolver {
       const forgotPasswordToken = urlTokenFactory();
 
       await UserForgotPassword.create({
+        // email should be lowercase
         email: user.email,
         token: forgotPasswordToken,
       }).save();
@@ -301,6 +390,8 @@ export default class AuthResolver {
 
         forgotPasswordToken.remove();
 
+        // blacklist all refreshTokens
+
         return {
           message: 'Password has been reset',
         };
@@ -308,6 +399,36 @@ export default class AuthResolver {
       return new Error('Token has expired');
     }
     return new Error('Invalid token');
+  }
+
+  @Mutation(() => ResponseMessage)
+  @UseMiddleware(Auth)
+  async changePassword(
+    @Arg('input', () => UserChangePasswordInput) input: UserChangePasswordInput,
+    @Ctx() { payload }: Context
+  ) {
+    const user = await User.findOne(payload?.user.userId);
+
+    if (user) {
+      const match = await passwordCompareGuard(
+        user.password,
+        input.oldPassword
+      );
+
+      if (match) {
+        const hashedPassword = await passwordHashFactory(input.newPassword);
+
+        await User.update(user.id, {
+          password: hashedPassword,
+        });
+
+        return {
+          message: 'Password changed',
+        };
+      }
+      return new Error('Current password invalid');
+    }
+    return new Error('Access unauthorized');
   }
 
   @Query(() => User)
