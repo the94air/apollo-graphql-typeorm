@@ -1,96 +1,25 @@
-import glob from 'glob';
-import slugify from 'slugify';
-import Redis, { RedisOptions } from 'ioredis';
 import * as dotenv from 'dotenv';
 import mercurius from 'mercurius';
 import { EmailDetails } from './types';
 import rateLimit from 'fastify-rate-limit';
 import { buildSchema } from 'type-graphql';
 import { ApolloServer } from 'apollo-server';
-import nodemailer, { Transporter } from 'nodemailer';
-import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import fastifyCookie, {
   CookieSerializeOptions,
   FastifyCookieOptions,
 } from 'fastify-cookie';
+import {
+  clearCookie,
+  getMailer,
+  sendMail,
+  getResolvers,
+  redis,
+  setCookie,
+  getCookie,
+} from './utils';
 
 dotenv.config();
-
-const PREFIX = slugify(process.env.APP_NAME as string, '_') + '_';
-
-const redis = () => {
-  const client = new Redis({
-    keyPrefix: PREFIX,
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT),
-    password:
-      process.env.REDIS_PASSWORD !== 'null'
-        ? process.env.REDIS_PASSWORD
-        : undefined,
-  } as RedisOptions);
-
-  client.on('error', (err) => {
-    console.log('Error ' + err);
-  });
-
-  return client;
-};
-
-const getMailer = () => {
-  let mailer = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: Number(process.env.MAIL_PORT),
-    secure: process.env.MAIL_ENCRYPTION === 'true' ? true : false,
-    auth: {
-      user: process.env.MAIL_USERNAME,
-      pass: process.env.MAIL_PASSWORD,
-    },
-    logger: false,
-  } as SMTPTransport.Options);
-
-  return mailer;
-};
-
-const sendMail = async (mailer: Transporter, details: EmailDetails) => {
-  await mailer.sendMail({
-    from: `"${process.env.APP_NAME}" <${process.env.MAIL_SENDER}>`,
-    to: details.to,
-    subject: `${details.subject} - ${process.env.APP_NAME}`,
-    text: details.text,
-    html: details.html,
-  });
-};
-
-const setCookie = (
-  name: string,
-  value: string,
-  options: CookieSerializeOptions,
-  cookie: Function
-) => {
-  cookie(PREFIX + name, value, options);
-};
-
-const clearCookie = (
-  name: string,
-  options: CookieSerializeOptions,
-  clear: Function
-) => {
-  clear(PREFIX + name, options);
-};
-
-const getResolvers = async () => {
-  let resolverModules: Function[] = [];
-
-  await Promise.all(
-    glob.sync(__dirname + '/endpoint/*.ts').map(async (file) => {
-      const { default: resolver } = await import(file);
-      resolverModules.push(resolver);
-    })
-  );
-
-  return resolverModules as [Function];
-};
 
 const development = async () => {
   const resolvers: [Function] = await getResolvers();
@@ -105,7 +34,9 @@ const development = async () => {
       return {
         redis: redis,
         headers: ctx.req.headers,
-        cookies: ctx.req.cookies,
+        getCookie: (name: string) => {
+          return getCookie(name, ctx.req.cookies);
+        },
         setCookie: (
           name: string,
           value: string,
@@ -154,7 +85,9 @@ const production = async () => {
       return {
         redis: redis,
         headers: request.headers,
-        cookies: request.cookies,
+        getCookie: (name: string) => {
+          return getCookie(name, request.cookies);
+        },
         setCookie: (
           name: string,
           value: string,

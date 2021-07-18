@@ -6,13 +6,14 @@ export const refreshTokenCheck: MiddlewareFn<Context> = async (
   action,
   next
 ) => {
-  const refreshToken = action.context.cookies.session;
+  const refreshTokenCookie = action.context.getCookie('session');
 
-  if (!refreshToken) {
-    throw new Error('Not authenticated');
+  if (!refreshTokenCookie) {
+    return new Error('Not authenticated');
   }
 
-  // check if token is blacklisted
+  const cookie = refreshTokenCookie.split(':');
+  const refreshToken = cookie[1];
 
   try {
     const data = verify(
@@ -25,6 +26,12 @@ export const refreshTokenCheck: MiddlewareFn<Context> = async (
     } as any;
   } catch (err) {
     console.log(err);
+    throw new Error('Not authenticated');
+  }
+
+  const status = await action.context.redis.get(refreshTokenCookie);
+
+  if (status === 'blacklisted') {
     throw new Error('Not authenticated');
   }
 

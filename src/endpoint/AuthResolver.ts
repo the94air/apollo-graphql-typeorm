@@ -11,18 +11,19 @@ import {
 } from 'type-graphql';
 import ms from 'ms';
 import dayjs from 'dayjs';
-import isBetween from 'dayjs/plugin/isBetween';
+import crypto from 'crypto';
 import argon2 from 'argon2';
 import { sign } from 'jsonwebtoken';
-import crypto from 'crypto';
-import { Context, userData } from '../types';
 import { User } from '../entity/User';
 import { Author } from '../entity/Author';
-import { Auth } from '../middleware/Auth';
-import { Verified } from '../middleware/Verified';
+import { Context, userData } from '../types';
+import isBetween from 'dayjs/plugin/isBetween';
+import { isVerified } from '../middleware/isVerified';
 import { UserVerify } from '../entity/UserVerify';
+import { accessTokenCheck } from '../middleware/accessTokenCheck';
 import { UserForgotPassword } from '../entity/UserForgotPassword';
 import { refreshTokenCheck } from '../middleware/refreshTokenCheck';
+import { notSignedIn } from '../middleware/notSignedIn';
 
 @InputType()
 class UserSignUpInput {
@@ -92,7 +93,10 @@ const refreshTokenFactory = (user: User) => {
   const token = sign(data, process.env.JWT_SECRET as string, {
     expiresIn: '1y',
   });
-  return token;
+
+  const refreshToken = `${user.id}:${token}`;
+
+  return refreshToken;
 };
 
 const accessTokenFactory = (user: User) => {
@@ -125,6 +129,7 @@ const passwordCompareGuard = async (
 @Resolver()
 export default class AuthResolver {
   @Mutation(() => ResponseMessage)
+  @UseMiddleware(notSignedIn)
   async signUp(
     @Arg('input', () => UserSignUpInput) input: UserSignUpInput,
     @Ctx() { sendMail, setCookie, redis }: Context
@@ -165,7 +170,7 @@ export default class AuthResolver {
         `,
       });
 
-      const refreshToken = `${newUser.id}:${refreshTokenFactory(newUser)}`;
+      const refreshToken = refreshTokenFactory(newUser);
 
       setCookie('session', refreshToken, {
         maxAge: ms('1y') / 1000,
@@ -183,7 +188,7 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
-  @UseMiddleware(Auth)
+  @UseMiddleware(accessTokenCheck)
   async resendVerifyEmail(@Ctx() { payload, sendMail }: Context) {
     const user = await User.findOne(payload?.user.userId, {
       relations: ['author'],
@@ -214,7 +219,7 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
-  @UseMiddleware(Auth)
+  @UseMiddleware(accessTokenCheck)
   async verifyEmail(
     @Arg('input', () => UserVerifyInput) input: UserVerifyInput,
     @Ctx() { payload }: Context
@@ -258,6 +263,7 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
+  @UseMiddleware(notSignedIn)
   async signIn(
     @Arg('input', () => UserSignInInput) input: UserSignInInput,
     @Ctx() { setCookie, redis }: Context
@@ -268,10 +274,7 @@ export default class AuthResolver {
       const match = await passwordCompareGuard(user.password, input.password);
 
       if (match) {
-        // blacklist old refreshToken
-        // cookies.session
-
-        const refreshToken = `${user.id}:${refreshTokenFactory(user)}`;
+        const refreshToken = refreshTokenFactory(user);
 
         setCookie('session', refreshToken, {
           maxAge: ms('1y') / 1000,
@@ -291,13 +294,16 @@ export default class AuthResolver {
 
   @Mutation(() => ResponseMessage)
   @UseMiddleware(refreshTokenCheck)
-  async refresh(@Ctx() { payload, setCookie, redis }: Context) {
+  async refresh(@Ctx() { payload, setCookie, getCookie, redis }: Context) {
     const user = await User.findOne(payload?.user.userId);
 
-    // blacklist refreshToken
-
     if (user) {
-      const refreshToken = `${user.id}:${refreshTokenFactory(user)}`;
+      const oldRefreshToken = getCookie('session');
+      if (oldRefreshToken) {
+        await redis.set(oldRefreshToken, 'blacklisted');
+      }
+
+      const refreshToken = refreshTokenFactory(user);
 
       setCookie('session', refreshToken, {
         maxAge: ms('1y') / 1000,
@@ -315,18 +321,20 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
-  @UseMiddleware(Auth)
-  async signOut(@Ctx() { payload, clearCookie }: Context) {
-    const user = await User.findOne(payload?.user.userId);
+  @UseMiddleware(accessTokenCheck)
+  async signOut(@Ctx() { payload, getCookie, clearCookie, redis }: Context) {
+    const oldRefreshToken = getCookie('session');
+    if (oldRefreshToken) {
+      await redis.set(oldRefreshToken, 'blacklisted');
+    }
 
     clearCookie('session');
-
-    // blacklist refreshToken
 
     return new Error('Account signed out');
   }
 
   @Mutation(() => ResponseMessage)
+  @UseMiddleware(notSignedIn)
   async forgotPassword(
     @Arg('input', () => UserForgotPasswordInput) input: UserForgotPasswordInput,
     @Ctx() { sendMail }: Context
@@ -362,8 +370,10 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
+  @UseMiddleware(notSignedIn)
   async resetPassword(
     @Arg('input', () => UserPasswordResetInput) input: UserPasswordResetInput
+    // @Ctx() { redis }: Context
   ) {
     const forgotPasswordToken = await UserForgotPassword.findOne({
       where: { token: input.token },
@@ -390,7 +400,12 @@ export default class AuthResolver {
 
         forgotPasswordToken.remove();
 
-        // blacklist all refreshTokens
+        // find and blacklist all refreshTokens
+        // await Promise.all(
+        //   oldRefreshTokens.map(async (token: string) => {
+        //     await redis.set(token, 'blacklisted');
+        //   })
+        // );
 
         return {
           message: 'Password has been reset',
@@ -402,7 +417,7 @@ export default class AuthResolver {
   }
 
   @Mutation(() => ResponseMessage)
-  @UseMiddleware(Auth)
+  @UseMiddleware(accessTokenCheck)
   async changePassword(
     @Arg('input', () => UserChangePasswordInput) input: UserChangePasswordInput,
     @Ctx() { payload }: Context
@@ -432,8 +447,8 @@ export default class AuthResolver {
   }
 
   @Query(() => User)
-  @UseMiddleware(Auth)
-  @UseMiddleware(Verified)
+  @UseMiddleware(accessTokenCheck)
+  @UseMiddleware(isVerified)
   async user(@Ctx() { payload }: Context) {
     return await User.findOne(payload?.user.userId, { relations: ['author'] });
   }

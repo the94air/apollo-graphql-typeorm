@@ -18,9 +18,7 @@ export interface Context {
   headers: {
     authorization: string;
   };
-  cookies: {
-    session: string;
-  };
+  getCookie(name: string): string | undefined;
   payload?: { user: userData };
   setCookie(
     name: string,

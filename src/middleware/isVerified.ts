@@ -1,10 +1,10 @@
 import { MiddlewareFn } from 'type-graphql';
 import { Context } from '../types';
 
-export const Verified: MiddlewareFn<Context> = async (action, next) => {
+export const isVerified: MiddlewareFn<Context> = async (action, next) => {
   try {
     if (action.context.payload?.user.isVerified === false) {
-      throw new Error('Not verified');
+      return new Error('Not verified');
     }
   } catch (err) {
     console.log(err);

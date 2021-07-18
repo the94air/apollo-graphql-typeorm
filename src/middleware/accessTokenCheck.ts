@@ -2,11 +2,11 @@ import { MiddlewareFn } from 'type-graphql';
 import { verify } from 'jsonwebtoken';
 import { Context, userData } from '../types';
 
-export const Auth: MiddlewareFn<Context> = async (action, next) => {
+export const accessTokenCheck: MiddlewareFn<Context> = async (action, next) => {
   const authorization = action.context.headers['authorization'];
 
   if (!authorization) {
-    throw new Error('Not authenticated');
+    return new Error('Not authenticated');
   }
 
   try {
