@@ -12,10 +12,8 @@ export const refreshTokenCheck: MiddlewareFn<Context> = async (
     return new Error('Not authenticated');
   }
 
-  const cookie = refreshTokenCookie.split(':');
-  const refreshToken = cookie[1];
-
   try {
+    const refreshToken = refreshTokenCookie.split(':')[1];
     const data = verify(
       refreshToken,
       process.env.JWT_SECRET as string

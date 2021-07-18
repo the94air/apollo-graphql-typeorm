@@ -10,13 +10,12 @@ import fastifyCookie, {
   FastifyCookieOptions,
 } from 'fastify-cookie';
 import {
-  clearCookie,
   getMailer,
   sendMail,
   getResolvers,
-  redis,
-  setCookie,
+  getRedis,
   getCookie,
+  PREFIX,
 } from './utils';
 
 dotenv.config();
@@ -30,6 +29,7 @@ const development = async () => {
     }),
     context: (ctx) => {
       const mailer = getMailer();
+      const redis = getRedis();
 
       return {
         redis: redis,
@@ -42,10 +42,14 @@ const development = async () => {
           value: string,
           options: CookieSerializeOptions
         ) => {
-          setCookie(name, value, options, ctx.res.cookie);
+          ctx.res.cookie(PREFIX + name, value, {
+            ...options,
+            sameSite: 'none',
+            secure: false,
+          });
         },
         clearCookie: (name: string, options: CookieSerializeOptions) => {
-          clearCookie(name, options, ctx.res.clearCookie);
+          ctx.res.clearCookie(name, options);
         },
         sendMail: async (details: EmailDetails) => {
           return sendMail(mailer, details);
@@ -66,6 +70,8 @@ const production = async () => {
 
   app.register(fastifyCookie, {
     secret: process.env.JWT_SECRET,
+    signed: true,
+    secure: true,
   } as FastifyCookieOptions);
 
   await app.register(rateLimit, {
@@ -81,6 +87,7 @@ const production = async () => {
     graphiql: true,
     context: (request: FastifyRequest, reply: FastifyReply) => {
       const mailer = getMailer();
+      const redis = getRedis();
 
       return {
         redis: redis,
@@ -93,10 +100,10 @@ const production = async () => {
           value: string,
           options: CookieSerializeOptions
         ) => {
-          setCookie(name, value, options, reply.cookie);
+          reply.cookie(PREFIX + name, value, options);
         },
         clearCookie: (name: string, options: CookieSerializeOptions) => {
-          clearCookie(name, options, reply.clearCookie);
+          reply.clearCookie(name, options);
         },
         sendMail: async (details: EmailDetails) => {
           return sendMail(mailer, details);

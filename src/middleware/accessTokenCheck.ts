@@ -3,15 +3,18 @@ import { verify } from 'jsonwebtoken';
 import { Context, userData } from '../types';
 
 export const accessTokenCheck: MiddlewareFn<Context> = async (action, next) => {
-  const authorization = action.context.headers['authorization'];
+  const authorizationHeader = action.context.headers['authorization'];
 
-  if (!authorization) {
+  if (!authorizationHeader) {
     return new Error('Not authenticated');
   }
 
   try {
-    const token = authorization.split(' ')[1];
-    const data = verify(token, process.env.JWT_SECRET as string) as userData;
+    const accessToken = authorizationHeader.split(' ')[1];
+    const data = verify(
+      accessToken,
+      process.env.JWT_SECRET as string
+    ) as userData;
 
     action.context.payload = {
       user: data,

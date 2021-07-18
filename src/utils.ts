@@ -9,9 +9,10 @@ import { EmailDetails } from './types';
 
 dotenv.config();
 
-export const PREFIX = slugify(process.env.APP_NAME as string, '_') + '_';
+export const PREFIX =
+  slugify(process.env.APP_NAME as string, '_').toLowerCase() + '_';
 
-export const redis = () => {
+export const getRedis = () => {
   const client = new Redis({
     keyPrefix: PREFIX,
     host: process.env.REDIS_HOST,
@@ -54,25 +55,8 @@ export const sendMail = async (mailer: Transporter, details: EmailDetails) => {
   });
 };
 
-export const setCookie = (
-  name: string,
-  value: string,
-  options: CookieSerializeOptions,
-  cookie: Function
-) => {
-  cookie(PREFIX + name, value, options);
-};
-
 export const getCookie = (name: string, cookies: any): string | undefined => {
-  return cookies[PREFIX + name];
-};
-
-export const clearCookie = (
-  name: string,
-  options: CookieSerializeOptions,
-  clear: Function
-) => {
-  clear(PREFIX + name, options);
+  return cookies && cookies[PREFIX + name] ? cookies[PREFIX + name] : undefined;
 };
 
 export const getResolvers = async () => {
