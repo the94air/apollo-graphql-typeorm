@@ -13,7 +13,7 @@ export const accessTokenCheck: MiddlewareFn<Context> = async (action, next) => {
     const accessToken = authorizationHeader.split(' ')[1];
     const data = verify(
       accessToken,
-      process.env.JWT_SECRET as string
+      process.env.JWT_ACCESS_TOKEN_SECRET as string
     ) as userData;
 
     action.context.payload = {

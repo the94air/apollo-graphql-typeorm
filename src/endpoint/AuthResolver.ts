@@ -90,7 +90,7 @@ const refreshTokenFactory = (user: User) => {
     userId: user.id,
   };
 
-  const token = sign(data, process.env.JWT_SECRET as string, {
+  const token = sign(data, process.env.JWT_REFRESH_TOKEN_SECRET as string, {
     expiresIn: '1y',
   });
 
@@ -105,7 +105,7 @@ const accessTokenFactory = (user: User) => {
     isVerified: user.isVerified,
   };
 
-  const token = sign(data, process.env.JWT_SECRET as string, {
+  const token = sign(data, process.env.JWT_ACCESS_TOKEN_SECRET as string, {
     expiresIn: 100,
   });
   return token;
@@ -164,8 +164,8 @@ export default class AuthResolver {
         subject: 'Verify email',
         html: `
           <p>Hi, ${newUser.author.name}</p>
-          <p>Click the email below to verify your email</p>
-          <p><a href="http://localhost:8080/auth/verify/${verifyToken}">Verify email</a></p>
+          <p>Click the link below to verify your email</p>
+          <p><a href="${process.env.GRAPHQL_CLIENT_URI}/auth/verify/${verifyToken}">Verify email</a></p>
           <p>Thank you</p>
         `,
       });
@@ -173,7 +173,7 @@ export default class AuthResolver {
       const refreshToken = refreshTokenFactory(newUser);
 
       setCookie('session', refreshToken, {
-        maxAge: ms('1y') / 1000,
+        maxAge: ms('1y'),
         httpOnly: true,
       });
 
@@ -189,32 +189,38 @@ export default class AuthResolver {
 
   @Mutation(() => ResponseMessage)
   @UseMiddleware(accessTokenCheck)
-  async resendVerifyEmail(@Ctx() { payload, sendMail }: Context) {
+  async resendVerifyMail(@Ctx() { payload, sendMail }: Context) {
     const user = await User.findOne(payload?.user.userId, {
       relations: ['author'],
     });
 
-    const verifyToken = urlTokenFactory();
+    if (user && user.isVerified === false) {
+      const verifyToken = urlTokenFactory();
 
-    await UserVerify.create({
-      // email should be lowercase
-      email: user?.email,
-      token: verifyToken,
-    }).save();
+      await UserVerify.create({
+        // email should be lowercase
+        email: user?.email,
+        token: verifyToken,
+      }).save();
 
-    await sendMail({
-      to: user?.email as string,
-      subject: 'Resent verify email',
-      html: `
+      await sendMail({
+        to: user?.email as string,
+        subject: 'Resent verify email',
+        html: `
         <p>Hi, ${user?.author.name}</p>
-        <p>Click the email below to verify your email</p>
-        <p><a href="http://localhost:8080/auth/verify/${verifyToken}">Verify email</a></p>
+        <p>Click the link below to verify your email</p>
+        <p><a href="${process.env.GRAPHQL_CLIENT_URI}/auth/verify/${verifyToken}">Verify email</a></p>
         <p>Thank you</p>
       `,
-    });
+      });
+
+      return {
+        message: 'Verify token resent',
+      };
+    }
 
     return {
-      message: 'Verify token resent',
+      message: 'Account already verified',
     };
   }
 
@@ -226,40 +232,45 @@ export default class AuthResolver {
   ) {
     const user = await User.findOne(payload?.user.userId);
 
-    const verifyToken = await UserVerify.findOne({
-      where: { token: input.token, email: user?.email },
-    });
+    if (user && user.isVerified === false) {
+      const verifyToken = await UserVerify.findOne({
+        where: { token: input.token, email: user?.email },
+      });
 
-    if (user && verifyToken) {
-      dayjs.extend(isBetween);
+      if (user && verifyToken) {
+        dayjs.extend(isBetween);
 
-      if (
-        dayjs().isBetween(
-          dayjs(verifyToken.createdAt),
-          dayjs(verifyToken.createdAt).add(60, 'minutes')
-        )
-      ) {
-        const tokens = await UserVerify.find({
-          where: { email: user.email },
-        });
+        if (
+          dayjs().isBetween(
+            dayjs(verifyToken.createdAt),
+            dayjs(verifyToken.createdAt).add(60, 'minutes')
+          )
+        ) {
+          const tokens = await UserVerify.find({
+            where: { email: user.email },
+          });
 
-        await Promise.all(
-          tokens.map(async (token: { remove: () => any }) => {
-            await token.remove();
-          })
-        );
+          await Promise.all(
+            tokens.map(async (token: { remove: () => any }) => {
+              await token.remove();
+            })
+          );
 
-        await User.update(user.id, {
-          isVerified: true,
-        });
+          await User.update(user.id, {
+            isVerified: true,
+          });
 
-        return {
-          message: 'Account is verified',
-        };
+          return {
+            message: 'Account is verified',
+          };
+        }
+        return new Error('Token has expired');
       }
-      return new Error('Token has expired');
+      return new Error('Invalid token');
     }
-    return new Error('Invalid token');
+    return {
+      message: 'Account already verified',
+    };
   }
 
   @Mutation(() => ResponseMessage)
@@ -277,7 +288,7 @@ export default class AuthResolver {
         const refreshToken = refreshTokenFactory(user);
 
         setCookie('session', refreshToken, {
-          maxAge: ms('1y') / 1000,
+          maxAge: ms('1y'),
           httpOnly: true,
         });
 
@@ -306,7 +317,7 @@ export default class AuthResolver {
       const refreshToken = refreshTokenFactory(user);
 
       setCookie('session', refreshToken, {
-        maxAge: ms('1y') / 1000,
+        maxAge: ms('1y'),
         httpOnly: true,
       });
 
@@ -322,15 +333,20 @@ export default class AuthResolver {
 
   @Mutation(() => ResponseMessage)
   @UseMiddleware(accessTokenCheck)
-  async signOut(@Ctx() { payload, getCookie, clearCookie, redis }: Context) {
+  async signOut(@Ctx() { getCookie, setCookie, redis }: Context) {
     const oldRefreshToken = getCookie('session');
     if (oldRefreshToken) {
       await redis.set(oldRefreshToken, 'blacklisted');
     }
 
-    clearCookie('session');
+    setCookie('session', '', {
+      maxAge: 0,
+      httpOnly: true,
+    });
 
-    return new Error('Account signed out');
+    return {
+      message: 'Account signed out',
+    };
   }
 
   @Mutation(() => ResponseMessage)
@@ -358,8 +374,8 @@ export default class AuthResolver {
         subject: 'Forgot password',
         html: `
           <p>Hi, ${user?.author.name}</p>
-          <p>Click the email below to reset your password</p>
-          <p><a href="http://localhost:8080/auth/forgot-password/${forgotPasswordToken}">Reset password</a></p>
+          <p>Click the link below to reset your password</p>
+          <p><a href="${process.env.GRAPHQL_CLIENT_URI}/auth/forgot-password/${forgotPasswordToken}">Reset password</a></p>
           <p>Thank you</p>
         `,
       });
@@ -372,8 +388,8 @@ export default class AuthResolver {
   @Mutation(() => ResponseMessage)
   @UseMiddleware(notSignedIn)
   async resetPassword(
-    @Arg('input', () => UserPasswordResetInput) input: UserPasswordResetInput
-    // @Ctx() { redis }: Context
+    @Arg('input', () => UserPasswordResetInput) input: UserPasswordResetInput,
+    @Ctx() { redis }: Context
   ) {
     const forgotPasswordToken = await UserForgotPassword.findOne({
       where: { token: input.token },
@@ -400,16 +416,23 @@ export default class AuthResolver {
 
         forgotPasswordToken.remove();
 
-        // find and blacklist all refreshTokens
-        // await Promise.all(
-        //   oldRefreshTokens.map(async (token: string) => {
-        //     await redis.set(token, 'blacklisted');
-        //   })
-        // );
+        const stream = redis.scanStream({
+          match: `${user.id}:*`,
+        });
 
-        return {
-          message: 'Password has been reset',
-        };
+        stream.on('data', async (resultKeys: [string]) => {
+          await Promise.all(
+            resultKeys.map(async (key: string) => {
+              return redis.set(key, 'blacklisted');
+            })
+          );
+        });
+
+        stream.on('end', () => {
+          return {
+            message: 'Password has been reset',
+          };
+        });
       }
       return new Error('Token has expired');
     }

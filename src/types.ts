@@ -25,6 +25,5 @@ export interface Context {
     value: string,
     options?: CookieSerializeOptions
   ): void;
-  clearCookie(name: string, options?: CookieSerializeOptions): void;
   sendMail(details: EmailDetails): Promise<void>;
 }

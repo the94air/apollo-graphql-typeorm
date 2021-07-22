@@ -16,7 +16,7 @@ export const refreshTokenCheck: MiddlewareFn<Context> = async (
     const refreshToken = refreshTokenCookie.split(':')[1];
     const data = verify(
       refreshToken,
-      process.env.JWT_SECRET as string
+      process.env.JWT_REFRESH_TOKEN_SECRET as string
     ) as userData;
 
     action.context.payload = {

@@ -56,7 +56,7 @@ export const sendMail = async (mailer: Transporter, details: EmailDetails) => {
 };
 
 export const getCookie = (name: string, cookies: any): string | undefined => {
-  return cookies && cookies[PREFIX + name] ? cookies[PREFIX + name] : undefined;
+  return cookies && cookies[name] ? cookies[name] : undefined;
 };
 
 export const getResolvers = async () => {
